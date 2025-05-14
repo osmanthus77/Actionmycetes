@@ -498,68 +498,117 @@ ps：
 >
 > `finish.sh`对下载好的各sample文件的质量的检验和筛选，并生成相关文件来保存这些结果。生成counts.tsv、collect.pass.tsv和4个lst文件，`omit.lst`无蛋白序列/编码区序列、`collect.pss.tsv`筛选colletc.tsv中n50值pass的菌株并给无蛋白序列的菌株注释栏标记为No、`rep.lst`筛选collect.pss.tsv中有refseq的菌株、`sp.lst`筛选collect.pss.tsv中没有species taxon的菌株、`counts.tsv`文件行数（菌株数）计数
 
-### 3.4 生成分类tsv
 
-根据`Actionmycetes.assembly.tsv`及`collect.pass.tsv`，先分别生成4个tsv，complete_taxon、complete_untaxon、uncomplete_taxon、uncomplete_untaxon，后续运行antismash根据这个分类，其中以pass的进行antismash分析
-
-> complete：Complete Genome、Chromosome
-> 
-> uncomplete：Contig、Scaffold
-> 
-> taxon：菌株有物种分类
-> 
-> untaxon：菌株无物种分类，名称上包含`sp.`
+## 4 Minhash
 
 ```shell
-cd ~/project/nwr/Actionmycetes/summary
+cd ~/project/Actionmycetes/genomes
 
-cat Actionmycetes.assembly.tsv |
-    tsv-filter -H --regex '5:Complete\ Genome|Chromosome' |
-    tsv-filter -H --not-regex '4:sp.' |
-    tsv-select -f 1,4 \
-    > Act_complete_taxon.tsv
+# 生成 minhash 文件和脚本，一个 species.tsv 和 五个sh脚本
+nwr template summary/Actionmycetes.assembly.tsv \
+    --mh \
+    --parallel 8 \
+    --in ASSEMBLY/pass.lst \
+    --ani-ab 0.05 \
+    --ani-nr 0.005
 
-cat Actionmycetes.assembly.tsv |
-    tsv-filter -H --regex '5:Complete\ Genome|Chromosome' |
-    tsv-filter -H --regex '4:sp.' |
-    tsv-select -f 1,4 \
-    > Act_complete_untaxon.tsv
+# 生成序列的sketch
+bash MinHash/compute.sh
 
-cat Actionmycetes.assembly.tsv |
-    tsv-filter -H --not-regex '5:Complete\ Genome|Chromosome' |
-    tsv-filter -H --not-regex '4:sp.' |
-    tsv-select -f 1,4 \
-    > Act_uncomplete_taxon.tsv
+# 去重
+bash MinHash/nr.sh
 
-cat Actionmycetes.assembly.tsv |
-    tsv-filter -H --not-regex '5:Complete\ Genome|Chromosome' |
-    tsv-filter -H --regex '4:sp.' |
-    tsv-select -f 1,4 \
-    > Act_uncomplete_untaxon.tsv
+find MinHash -name "NR.lst" |
+    xargs cat |
+    sort |
+    uniq \
+    > summary/NR.lst
+find MinHash -name "redundant.lst" |
+    xargs cat |
+    sort |
+    uniq \
+    > summary/redundant.lst
+wc -l summary/NR.lst summary/redundant.lst
+# 8896 summary/NR.lst
+# 2737 summary/redundant.lst
 
-# 以下四个文件为后续需要使用的
-cat collect.pass.tsv |
-    tsv-filter -H --regex '12:Complete\ Genome|Chromosome' |
-    tsv-filter -H --not-regex '2:sp.' |
-    tsv-select -f 1,2 \
-    > Act_pass_complete_taxon.tsv
+# 异常菌株
+bash MinHash/abnormal.sh
 
-cat collect.pass.tsv |
-    tsv-filter -H --regex '12:Complete\ Genome|Chromosome' |
-    tsv-filter -H --regex '2:sp.' |
-    tsv-select -f 1,2 \
-    > Act_pass_complete_untaxon.tsv
+cat MinHash/abnormal.lst | wc -l
+# 244
 
-cat collect.pass.tsv |
-    tsv-filter -H --not-regex '12:Complete\ Genome|Chromosome' |
-    tsv-filter -H --not-regex '2:sp.' |
-    tsv-select -f 1,2 \
-    > Act_pass_uncomplete_taxon.tsv
+# 排除untaxon的
+cat MinHash/abnormal.lst |
+    tsv-join -e -f ASSEMBLY/sp.lst \
+    > MinHash/tmp.lst
+mv MinHash/tmp.lst MinHash/abnormal.lst
+cat MinHash/abnormal.lst | wc -l
+# 224
 
-cat collect.pass.tsv |
-    tsv-filter -H --not-regex '12:Complete\ Genome|Chromosome' |
-    tsv-filter -H --regex '2:sp.' |
-    tsv-select -f 1,2 \
-    > Act_pass_uncomplete_untaxon.tsv
-
+# 按照新条件重新 minhash
+nwr template summary/Actionmycetes.assembly.tsv \
+    --mh \
+    --parallel 8 \
+    --in ASSEMBLY/rep.lst \
+    --not-in ASSEMBLY/sp.lst \
+    --not-in MinHash/abnormal.lst \
+    --not-in summary/redundant.lst \
+    --height 0.4
+bash MinHash/dist.sh
 ```
+
+ps：
+> `compute.sh`：将fasta序列按照kmer 21用一致的哈希函数转换为hash值，筛选最小的10000生成sketch来代表这个序列
+>
+> `nr.sh`：序列去重
+>
+> `abnormal.sh`：筛选出基因组序列的相似度不正常的部分
+
+
+## 5 重新count
+
+```shell
+cd ~/project/Actionmycetes/genomes
+
+# 按照 pass 和 minhash 之后的新条件重新 count
+nwr template summary/Actionmycetes.assembly.tsv \
+    --count \
+    --in ASSEMBLY/pass.lst \
+    --not-in MinHash/abnormal.lst \
+    --rank family --rank genus \
+    --lineage family --lineage genus
+
+# 菌株统计，strains.taxon.tsv and taxa.tsv
+bash Count/strains.sh
+cat Count/taxa.tsv |
+    rgr md stdin --num
+
+# rank 分类
+bash Count/rank.sh
+cat Count/family.count.tsv |
+    tsv-filter -H --ge "3:20" |
+    rgr md stdin --num
+
+cp Count/strains.taxon.tsv summary/genome.taxon.tsv
+```
+ps: Allon_opa_DSM_45601_GCF_003002095_1-Allonocardiopsis属，无科分类，Streptosporangiales目
+
+| item    | count |
+| ------- | ----: |
+| strain  | 12302 |
+| species |  1783 |
+| genus   |   140 |
+| family  |    10 |
+| order   |     5 |
+| class   |     1 |
+
+| family               | #species | #strains |
+| -------------------- | -------: | -------: |
+| Actinomycetaceae     |      121 |      615 |
+| Micromonosporaceae   |      258 |     1020 |
+| Nocardiopsidaceae    |       58 |      147 |
+| Pseudonocardiaceae   |      322 |      700 |
+| Streptomycetaceae    |      793 |     9158 |
+| Streptosporangiaceae |      142 |      484 |
+| Thermomonosporaceae  |       86 |      173 |

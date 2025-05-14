@@ -367,10 +367,10 @@ for family in Actinomycetaceae; do
         sed "s/\.//g" |
         sed "s/\[//g" |
         sed "s/\]//g" |
-        parallel --colsep '\t' --no-run-if-empty --linebuffer -k -j 2 "
+        parallel --colsep '\t' --no-run-if-empty --linebuffer -k -j 1 "
             echo "${family}_${level}_{2}_{1}";
             mkdir -p test/${family}/${level}/{2};
-            antismash --taxon bacteria -c 4 --cb-general --cc-mibig --cb-knownclusters --pfam2go ASSEMBLY/{2}/{1}/*genomic.gbff.gz --output-dir test/${family}/${level}/{2}/{1}
+            time antismash --taxon bacteria -c 6 --cb-general --cc-mibig --cb-knownclusters --pfam2go ASSEMBLY/{2}/{1}/*genomic.gbff.gz --output-dir test/${family}/${level}/{2}/{1}
         "
     done
 done
@@ -390,7 +390,7 @@ for family in $(cat ../genomes/Count/family.lst); do
         parallel --colsep '\t' --no-run-if-empty --linebuffer -k -j 1 "
             echo "${family}_${level}_{2}_{1}";
             mkdir -p antismash_result/${family}/${level}/{2};
-            antismash --taxon bacteria -c 4 --cb-general --cc-mibig --cb-knownclusters --pfam2go ASSEMBLY/{2}/{1}/*genomic.gbff.gz --output-dir antismash_result/${family}/${level}/{2}/{1}
+            antismash --taxon bacteria -c 6 --cb-general --cc-mibig --cb-knownclusters --pfam2go ASSEMBLY/{2}/{1}/*genomic.gbff.gz --output-dir antismash_result/${family}/${level}/{2}/{1}
         "
     done
 done

@@ -2,7 +2,11 @@
 
 ## 1 BGC检测
 
-检测BGC规则：81增加到101条
+检测BGC规则：81增加到101条，检测更多类型BGC
+
+新增命令行选项：
+- `--hmmdetection-limit-to-rule-names`: 限制只检测指定规则名称的原始簇protoclusters   
+- `--hmmdetection-limit-to-rule-categories`: 限制只检测指定规则类别的原始簇protoclusters   
 
 ## 2 萜烯分析
 
@@ -11,7 +15,7 @@
 ## 3 基因功能分析
 
 新增定制化注释`Tailoring functions`，肽骨架后修饰相关的功能注释，尤其是糖肽类？
-可以从“卤代吡咯（halogenated pyrrole）”到具有特定位点选择性的色氨酸卤化酶（如哪一个碳原子被卤化）的具体预测。
+可以从“卤代吡咯（halogenated pyrrole）”到具有特定位点选择性的色氨酸 卤化酶（如哪一个碳原子被卤化）的具体预测。
 来源于MITE数据库
 
 ## 4 NRPS/PKS改进
@@ -26,4 +30,6 @@ antiSMASH 现在还会检查 NRPS 的缩合（condensation, C）结构域和外�
 
 overview中similarity评分 百分数 变 高中低。高75+，中50+，低15+，15以下不相似
 
-移除真菌基因预测功能
+移除真菌基因预测功能，GlimmerHMM
+
+移除 ClusterBlast 结果在 GenBank 文件注释中的展示

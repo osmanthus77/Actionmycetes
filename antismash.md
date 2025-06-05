@@ -356,6 +356,11 @@ wc -l run/check/success.tsv
 ### 2.2 运行antismash
 
 ```shell
+# 激活环境
+cd ~/project/Actionmycetes/antismash
+source ~/miniconda3/bin/activate
+conda antivate antismash
+
 # 选取几个作为测试
 for family in Actinomycetaceae; do
     for level in complete_taxon complete_untaxon; do
@@ -369,15 +374,14 @@ for family in Actinomycetaceae; do
         sed "s/\]//g" |
         parallel --colsep '\t' --no-run-if-empty --linebuffer -k -j 1 "
             echo "${family}_${level}_{2}_{1}";
-            mkdir -p test/${family}/${level}/{2};
-            time antismash --taxon bacteria -c 6 --cb-general --cc-mibig --cb-knownclusters --pfam2go ASSEMBLY/{2}/{1}/*genomic.gbff.gz --output-dir test/${family}/${level}/{2}/{1}
+            time antismash --taxon bacteria -c 6 --cb-general --cc-mibig --cb-knownclusters --pfam2go ASSEMBLY/{2}/{1}/*genomic.gbff.gz --output-dir test/${family}/${level}/{1}
         "
     done
 done
 
 
 # 正式运行
-for family in $(cat ../genomes/Count/family.lst); do
+for family in $(cat family.lst); do
     for level in complete_taxon complete_untaxon; do
         mkdir -p antismash_result/${family}/${level};
         cat group/family_result/${family}_pass_${level}.tsv | tr " " "_" |
@@ -389,9 +393,173 @@ for family in $(cat ../genomes/Count/family.lst); do
         sed "s/\]//g" |
         parallel --colsep '\t' --no-run-if-empty --linebuffer -k -j 1 "
             echo "${family}_${level}_{2}_{1}";
-            mkdir -p antismash_result/${family}/${level}/{2};
-            antismash --taxon bacteria -c 6 --cb-general --cc-mibig --cb-knownclusters --pfam2go ASSEMBLY/{2}/{1}/*genomic.gbff.gz --output-dir antismash_result/${family}/${level}/{2}/{1}
+            antismash --taxon bacteria -c 4 --cb-general --cc-mibig --cb-knownclusters --pfam2go ASSEMBLY/{2}/{1}/*genomic.gbff.gz --output-dir antismash_result/${family}/${level}/{1}
         "
     done
 done
 ```
+
+### 2.3 检查并补齐
+
+```shell
+cd ~/project/Actionmycetes/antismash/run
+mkdir completion
+
+# 检查生成结果目录的数量
+for family in $(cat ../family.lst); do
+    for level in complete_taxon complete_untaxon; do
+        ls ../antismash_result/${family}/${level} |
+        sed "s/$/\t${family}\t${level}/g" >> completion/all_end_names.tsv
+    done
+done
+
+wc -l completion/all_end_names.tsv 
+#    1556 completion/all_end_names.tsv
+
+# 检查空目录
+for family in $(cat ../family.lst); do
+    for level in complete_taxon complete_untaxon; do
+        find ../antismash_result/${family}/${level} -mindepth 1 -maxdepth 1 -type d -empty |
+        cut -f 1 |
+        cut -d "/" -f 5 |
+        sed "s/$/\t${family}\t${level}/g" >> completion/all_empty_names.tsv
+    done
+done
+
+wc -l completion/all_empty_names.tsv 
+#      24 completion/all_empty_names.tsv
+```
+
+`1.1`中统计得到complete共1559个条目，antismash得到1556个目录，数量不匹配，并且存在24个空目录。根据运行过程中stdout，可知是部分菌株gbff文件内容出现问题，无法成功注释。可使用fna文件注释
+
+```shell
+# 寻找1559条中无注释部分
+
+# 1559条菌株信息
+cd ~/project/Actionmycetes/antismash/run
+
+for family in $(cat ../family.lst); do
+    for level in complete_taxon complete_untaxon; do
+        cat ../group/family_result/${family}_pass_${level}.tsv |
+        cut -f 1 |
+        sed "s/$/\t${family}\t${level}/g" >> completion/all_complete_names.tsv
+    done
+done
+wc -l all_complete_names.tsv 
+#    1559 all_complete_names.tsv
+
+# 找出没跑的
+cd ~/project/Actionmycetes/antismash/run/completion
+sort all_end_names.tsv > all_end_names_sort.tsv
+sort all_complete_names.tsv > all_complete_names_sort.tsv
+
+comm -23 all_complete_names_sort.tsv all_end_names_sort.tsv > no_run.tsv
+wc -l no_run.tsv 
+#       4 no_run.tsv
+
+# 合并空目录和没跑的
+cat all_empty_names.tsv | cut -f 1 >> run_wrong.tsv
+cat no_run.tsv | cut -f 1 >> run_wrong.tsv
+
+wc -l run_wrong.tsv 
+#      28 run_wrong.tsv
+
+# 获取genus-species信息
+for family in $(cat ../../family.lst); do
+    for level in complete_taxon complete_untaxon; do
+        cat  ../../group/family_result/${family}_pass_${level}.tsv |
+        tr "" "_" |
+        sed "s/sp\./sp/g" |
+        sed "s/(//g" |
+        sed "s/)//g" |
+        sed "s/\.//g" |
+        sed "s/\[//g" |
+        sed "s/\]//g" >> all_complete_names_taxon.tsv
+    done 
+done
+
+# 找出需要重跑 antismash 的，并整合信息
+sort run_wrong.tsv >  run_wrong_sort.tsv
+sort all_complete_names_taxon.tsv > all_complete_names_taxon_sort.tsv
+
+cat all_complete_names_taxon_sort.tsv | tsv-join -f run_wrong_sort.tsv -k 1 > run_wrong_taxon_sort.tsv
+wc -l run_wrong_taxon_sort.tsv 
+#      28 run_wrong_taxon_sort.tsv
+
+# 并补充 antismash 运行过程中出现 error 和 warning 的条目
+wc -l run_wrong_taxon_sort.tsv 
+#      36 run_wrong_taxon_sort.tsv
+```
+
+一共统计得到28条菌株需要重新运行 antismash
+
+```shell
+# 利用fna基因组文件进行antismash
+cd ~/project/Actionmycetes/antismash/run/completion
+source ~/miniconda3/bin/activate
+conda antivate antismash
+mkdir fna result
+
+cat run_wrong_taxon_sort.tsv | tr " " "_" |
+    parallel --colsep "\t" --no-run-if-empty --linebuffer -k -j 1 '
+    echo "{2}\t{1}";
+    mkdir fna/{1};
+    cp ../../ASSEMBLY/{2}/{1}/*genomic.fna.gz fna/{1}/ ;
+    rm fna/{1}/*cds_from_genomic.fna.gz;
+    rm fna/{1}/*rna_from_genomic.fna.gz;
+    gzip -df fna/{1}/*.gz;
+    antismash --taxon bacteria -c 4 --cb-general --cc-mibig --cb-knownclusters \
+        --pfam2go --asf --genefinding-tool prodigal \
+        fna/{1}/*genomic.fna --output-dir result/{1}
+    '
+# 手动移动到对应目录下
+```
+
+### 2.4 检查补齐结果
+
+```shell
+cd ~/project/Actionmycetes/antismash
+mkdir -p antismash_summary/strains_raw
+
+for family in $(cat family.lst); do
+    for level in complete_taxon complete_untaxon; do
+        find antismash_result/${family}/${level}  -mindepth 1 -maxdepth 1 -type d |
+            xargs -I {} basename {} > antismash_summary/strains_raw/strains_${family}_${level}_8.lst ;
+        wc -l antismash_summary/strains_raw/strains_${family}_${level}_8.lst
+    done
+done
+
+wc -l antismash_summary/strains_raw/*       
+#      22 antismash_summary/strains_raw/strains_Actinomycetaceae_complete_untaxon_8.lst
+#       0 antismash_summary/strains_raw/strains_Carbonactinosporaceae_complete_taxon_8.lst
+#       0 antismash_summary/strains_raw/strains_Carbonactinosporaceae_complete_untaxon_8.lst
+#      67 antismash_summary/strains_raw/strains_Micromonosporaceae_complete_taxon_8.lst
+#      65 antismash_summary/strains_raw/strains_Micromonosporaceae_complete_untaxon_8.lst
+#      18 antismash_summary/strains_raw/strains_Nocardiopsidaceae_complete_taxon_8.lst
+#       4 antismash_summary/strains_raw/strains_Nocardiopsidaceae_complete_untaxon_8.lst
+#      61 antismash_summary/strains_raw/strains_Pseudonocardiaceae_complete_taxon_8.lst
+#      49 antismash_summary/strains_raw/strains_Pseudonocardiaceae_complete_untaxon_8.lst
+#     576 antismash_summary/strains_raw/strains_Streptomycetaceae_complete_taxon_8.lst
+#     553 antismash_summary/strains_raw/strains_Streptomycetaceae_complete_untaxon_8.lst
+#      13 antismash_summary/strains_raw/strains_Streptosporangiaceae_complete_taxon_8.lst
+#      10 antismash_summary/strains_raw/strains_Streptosporangiaceae_complete_untaxon_8.lst
+#       8 antismash_summary/strains_raw/strains_Thermomonosporaceae_complete_taxon_8.lst
+#       6 antismash_summary/strains_raw/strains_Thermomonosporaceae_complete_untaxon_8.lst
+#       0 antismash_summary/strains_raw/strains_Treboniaceae_complete_taxon_8.lst
+#       0 antismash_summary/strains_raw/strains_Treboniaceae_complete_untaxon_8.lst
+#    1560 total
+
+# 检查空目录
+for family in $(cat family.lst); do
+    for level in complete_taxon complete_untaxon; do
+        find antismash_result/${family}/${level}  -mindepth 1 -maxdepth 1 -type d -empty |
+        cut -f 1 |
+        cut -d "/" -f 4 |
+        sed "s/$/\t${family}\t${level}/g" >> antismash_summary/empty_dir.tsv
+    done
+done
+
+wc -l antismash_summary/empty_dir.tsv
+#       0 antismash_summary/empty_dir.tsv
+```
+空目录数目为0，说明结果补齐成功，complete的全部菌株antismash都运行成功

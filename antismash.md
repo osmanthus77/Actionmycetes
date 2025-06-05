@@ -521,6 +521,7 @@ cat run_wrong_taxon_sort.tsv | tr " " "_" |
 cd ~/project/Actionmycetes/antismash
 mkdir -p antismash_summary/strains_raw
 
+# 统计 strain 信息
 for family in $(cat family.lst); do
     for level in complete_taxon complete_untaxon; do
         find antismash_result/${family}/${level}  -mindepth 1 -maxdepth 1 -type d |
@@ -533,7 +534,7 @@ wc -l antismash_summary/strains_raw/*
 #      22 antismash_summary/strains_raw/strains_Actinomycetaceae_complete_untaxon_8.lst
 #       0 antismash_summary/strains_raw/strains_Carbonactinosporaceae_complete_taxon_8.lst
 #       0 antismash_summary/strains_raw/strains_Carbonactinosporaceae_complete_untaxon_8.lst
-#      67 antismash_summary/strains_raw/strains_Micromonosporaceae_complete_taxon_8.lst
+#      66 antismash_summary/strains_raw/strains_Micromonosporaceae_complete_taxon_8.lst
 #      65 antismash_summary/strains_raw/strains_Micromonosporaceae_complete_untaxon_8.lst
 #      18 antismash_summary/strains_raw/strains_Nocardiopsidaceae_complete_taxon_8.lst
 #       4 antismash_summary/strains_raw/strains_Nocardiopsidaceae_complete_untaxon_8.lst
@@ -547,7 +548,7 @@ wc -l antismash_summary/strains_raw/*
 #       6 antismash_summary/strains_raw/strains_Thermomonosporaceae_complete_untaxon_8.lst
 #       0 antismash_summary/strains_raw/strains_Treboniaceae_complete_taxon_8.lst
 #       0 antismash_summary/strains_raw/strains_Treboniaceae_complete_untaxon_8.lst
-#    1560 total
+#    1559 total
 
 # 检查空目录
 for family in $(cat family.lst); do
@@ -562,4 +563,64 @@ done
 wc -l antismash_summary/empty_dir.tsv
 #       0 antismash_summary/empty_dir.tsv
 ```
+
 空目录数目为0，说明结果补齐成功，complete的全部菌株antismash都运行成功
+
+## 3 统计结果信息（complete水平）
+
+### 3.1 统计 overview-table 信息
+
+```shell
+cd  ~/project/Actionmycetes/antismash/antismash_summary
+mkdir -p table/overview table/mibig
+
+for family in $(cat ../family.lst); do
+    for level in complete_taxon complete_untaxon; do
+        for strains in $(cat strains_raw/strains_${family}_${level}_8.lst); do
+            mkdir -p table/overview/raw;
+            cat ../antismash_result/${family}/${level}/${strains}/index.html |
+            pup 'table.region-table tbody tr td text{}' |
+            sed 's/Region/|Region/g' |
+            grep '\S' > table/overview/raw/${strains}_overview_raw.tsv
+        done
+    done
+done
+
+# 修改格式
+for family in $(cat ../family.lst); do
+    for level in complete_taxon complete_untaxon; do
+        for strains in $(cat strains_raw/strains_${family}_${level}_8.lst); do
+            perl html.pl table/overview/raw/${strains}_overview_raw.tsv |
+            sed "s/^/${strains}_/g; s/Region /cluster/g" >> table/overview/overview_whole_${level}_8.tsv
+        done
+    done
+done
+
+```
+### 3.2 统计 mibig 产物信息
+
+```shell
+cd  ~/project/Actionmycetes/antismash/antismash_summary
+
+for family in $(cat ../family.lst); do
+    for level in complete_taxon complete_untaxon; do
+        for strains in $(cat strains_raw/strains_${family}_${level}_8.lst); do
+            cat ../antismash_result/${family}/${level}/${strains}/index.html |
+            pup 'table.region-table tbody tr.linked-row a attr{href}' |
+            grep -v "https://docs.antismash.secondarymetabolites.org/" |    #排除 antismash 自身代谢产物数据库
+            grep -B 1 "https://mibig.secondarymetabolites.org/" |    #筛选出根据 mibig 预测的信息
+            grep -v "\-\-" |
+            sed -E 's/https:\/\/mibig.secondarymetabolites.org\/go\///g; s/#//g; s/\/[0-9]//g' |
+            paste - - |
+            sed "s/^/${strains}_/g" |
+            sed -E 's/r1c/cluster/g; s/r([0-9]+)c([0-9]+)/cluster\1.\2/g' |
+            sort | uniq \
+            >> table/mibig/mibig_whole_${level}_8.tsv
+        done 
+    done
+done
+
+# 统计预测产物MiBIG参考信息的个数
+wc -l table/mibig/*tsv
+
+```

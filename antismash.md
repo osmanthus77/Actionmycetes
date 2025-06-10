@@ -682,7 +682,7 @@ for family in $(cat ../family.lst); do
     for level in complete_taxon complete_untaxon; do
         cat product/cluster_gpa_${level}.tsv |
             cut -f 1 |
-            parallel --colsep '\t' --no-run-if-empty --linebuffer -k -j 1 "
+            parallel --colsep '\t' --no-run-if-empty --linebuffer -k -j 8 "
                 echo {};
                 mkdir -p product/antismash_${level}/{};
                 cp -r ../antismash_result/${family}/${level}/{} product/antismash_${level}/

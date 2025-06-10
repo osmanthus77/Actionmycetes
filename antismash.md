@@ -729,7 +729,7 @@ done
 
 ```
 
-#### 4.2 提取特定domain序列
+### 4.2 提取特定domain序列
 
 **注意**：筛选特定 domain 时，要用 domain 全称，如下表
 | domain 简称 | domain 全称 |

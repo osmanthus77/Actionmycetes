@@ -591,10 +591,19 @@ for family in $(cat ../family.lst); do
     for level in complete_taxon complete_untaxon; do
         for strains in $(cat strains_raw/strains_${family}_${level}_8.lst); do
             perl html.pl table/overview/raw/${strains}_overview_raw.tsv |
-            sed "s/^/${strains}_/g; s/Region /cluster/g" >> table/overview/overview_whole_${level}_8.tsv
+            sed "s/^/${strains}_/g; s/Region /cluster/g" |
+            sed -E 's/cluster1\./cluster/g'
+            sort | uniq \
+            >> table/overview/overview_whole_${level}_8.tsv
         done
     done
 done
+
+wc -l table/overview/*tsv
+#   23870 table/overview/overview_whole_complete_taxon_8.tsv
+#   21812 table/overview/overview_whole_complete_untaxon_8.tsv
+#   45682 total
+
 
 ```
 ### 3.2 统计 mibig 产物信息
@@ -622,5 +631,133 @@ done
 
 # 统计预测产物MiBIG参考信息的个数
 wc -l table/mibig/*tsv
+#   13269 table/mibig/mibig_whole_complete_taxon_8.tsv
+#   11593 table/mibig/mibig_whole_complete_untaxon_8.tsv
+#   24862 total
+```
+
+
+### 3.3 筛选产物
+
+创建GPA名称的list文件，根据该文件对antismash结果进行筛选
+
+```shell
+cd  ~/project/Actionmycetes/antismash/antismash_summary
+mkdir product
+for level in complete_taxon complete_untaxon; do
+    cat table/overview/overview_whole_${level}_8.tsv |
+        tsv-join -d 1 -f table/mibig/mibig_whole_${level}_8.tsv -k 1 --append-fields 2 | # 合并product和MiBIG
+        tsv-filter --or --str-in-fld 7:High --str-in-fld 7:Medium  | # 筛选：相似度Medium和High,可选
+        sed 's/_cluster/\tcluster/g' |
+        grep -F -f "gpa.tsv" > product/gpa_${level}_8.tsv 
+        wc -l product/gpa_${level}_8.tsv
+done
+
+wc -l product/*
+#      43 product/gpa_complete_taxon_8.tsv
+#      23 product/gpa_complete_untaxon_8.tsv
+
+```
+
+## 4 提取domain序列
+
+### 4.1 提取全部domain序列
+
+#### 准备产物文件
+
+```shell
+# 修改第二列格式
+cd ~/project/Actionmycetes/antismash/antismash_summary
+
+for level in complete_taxon complete_untaxon; do
+    cat product/gpa_${level}_8.tsv | 
+    sed 's/cluster/r1c/g' |
+    cut -f 1,2 > product/cluster_gpa_${level}.tsv
+done
+
+# 注意：可能存在cluster2.1的情况，手动修改为 r2c1
+
+# 拷贝相关antismash结果到新文件夹
+for family in $(cat ../family.lst); do
+    for level in complete_taxon complete_untaxon; do
+        cat product/cluster_gpa_${level}.tsv |
+            cut -f 1 |
+            parallel --colsep '\t' --no-run-if-empty --linebuffer -k -j 1 "
+                echo {};
+                mkdir -p product/antismash_${level}/{};
+                cp -r ../antismash_result/${family}/${level}/{} product/antismash_${level}/
+                "
+    done
+done
+
+```
+
+#### 提取全部domain序列
+
+手动将`antismash_pp_for_complete_uncomplete.py`脚本中`dna`替换为`sequence`并保存为另一文件，针对dna和aa的`py`脚本内容除`dna和aa`外无区别
+
+```shell
+cd ~/project/Actionmycetes/antismash/antismash_summary
+
+for level in complete_taxon complete_untaxon; do
+    for se in dna aa; do
+        mkdir domain_${se};
+
+        for i in $(cat product/cluster_gpa_${level}.tsv | sed "s/\t/,/g"); do
+            echo ${i};
+            sample=$(echo ${i} | cut -d "," -f 1);
+            num=$(echo ${i} | cut -d "," -f 2);
+            echo ${num};
+            js="product/antismash_${level}/${sample}/regions.js";
+            type=$(python ${se}_antismash_pp_for_complete_uncomplete.py "${js}" "${num}" "${sample}");
+            echo ${type} | sed "s/]/]\n/g" >> domain_${se}/domain_${se}_all_${level}.txt;
+        done
+    done
+done
+
+# 修改格式
+for level in complete_taxon complete_untaxon; do
+    for se in dna aa; do
+        cat domain_${se}/domain_${se}_all_${level}.txt |
+        sed "s/\[//g" | sed "s/\]//g"|sed "s/'//g" | sed "s/,/\n/g"|
+        sed "s/ >/>/g" | sed "s/+/\t/g" |
+        sed "s/\t/\n/g" |
+        sed '/^$/d' \
+        > domain_${se}/ok_domain_${se}_all_${level}.txt
+    done
+done
+
+```
+
+#### 4.2 提取特定domain序列
+
+**注意**：筛选特定 domain 时，要用 domain 全称，如下表
+| domain 简称 | domain 全称 |
+|:----------:|--------------|
+| A domain | AMP-binding |
+| C domain | Condensation |
+| T domain | PCP |
+
+ps: 糖肽类抗生素中 `C domain`还有一种类型，叫`Cglyc`，筛选时需要与`Condensation`一起筛选，才是全部Cdomain
+
+```shell
+cd ~/project/Actionmycetes/antismash/antismash_summary
+
+for level in complete_taxon complete_untaxon; do
+    for se in dna aa; do
+        cat domain_${se}/ok_domain_${se}_all_${level}.txt |
+        grep -E "Condensation|Cglyc" \
+        > domain_${se}/donmain_C${se}.txt
+
+        cat domain_${se}/ok_domain_${se}_all_${level}.txt |
+        grep -E "AMP-binding" \
+        > domain_${se}/donmain_A${se}.txt
+
+        cat domain_${se}/ok_domain_${se}_all_${level}.txt |
+        grep -E "PCP" \
+        > domain_${se}/donmain_T${se}.txt
+    done
+done
+
 
 ```

@@ -33,3 +33,12 @@ overview中similarity评分 百分数 变 高中低。高75+，中50+，低15+�
 移除真菌基因预测功能，GlimmerHMM
 
 移除 ClusterBlast 结果在 GenBank 文件注释中的展示
+
+**`region.js`文件格式改变**
+v7.0中region.js文件中 details_data 移动到 resultsData 中
+
+v7中层级: details_data-nrpspks-r1c1（cluster可变）-orfs，orfs中包含id、sequence、domains、modules
+
+v8中层级: resultsData-r1c1（cluster可变）-antismash.outputs.html.visualisers.nrps_pks_domains-orfs，orfs中包含id、sequence、domains、modules
+
+所需要的NPRS的domain全部信息均在orfs-domains中，包括氨基酸序列、DNA序列、domain类型

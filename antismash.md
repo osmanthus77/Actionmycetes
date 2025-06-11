@@ -746,18 +746,66 @@ cd ~/project/Actionmycetes/antismash/antismash_summary
 for level in complete_taxon complete_untaxon; do
     for se in dna aa; do
         cat domain_${se}/ok_domain_${se}_all_${level}.txt |
-        grep -E "Condensation|Cglyc" \
-        > domain_${se}/donmain_C${se}.txt
+        grep -A 1 -E "Condensation|Cglyc" |
+        sed '/^--$/d' \
+        >> domain_${se}/donmain_C${se}.txt
 
         cat domain_${se}/ok_domain_${se}_all_${level}.txt |
-        grep -E "AMP-binding" \
-        > domain_${se}/donmain_A${se}.txt
+        grep -A 1 -E "AMP-binding" |
+        sed '/^--$/d' \
+        >> domain_${se}/donmain_A${se}.txt
 
         cat domain_${se}/ok_domain_${se}_all_${level}.txt |
-        grep -E "PCP" \
-        > domain_${se}/donmain_T${se}.txt
+        grep -A 1 -E "PCP" \
+        >> domain_${se}/donmain_T${se}.txt
     done
 done
 
+for se in dna aa; do
+        for domain in A C T; do
+            echo domain_${se}/donmain_${domain}${se}.txt
+            grep ">" domain_${se}/donmain_${domain}${se}.txt | wc -l 
+    done
+done
+
+#domain_dna/donmain_Adna.txt 	
+#     565
+#domain_dna/donmain_Cdna.txt 	
+#     464
+#domain_dna/donmain_Tdna.txt 	
+#     512
+#domain_aa/donmain_Aaa.txt 	
+#     565
+#domain_aa/donmain_Caa.txt 	
+#     464
+#domain_aa/donmain_Taa.txt 	
+#     531
+
+```
+
+### 4.3 提取产物肽序列
+
+```shell
+cd ~/project/Actionmycetes/antismash/antismash_summary
+mkdir aa
+
+
+for level in complete_taxon complete_untaxon; do
+        product_file="product/cluster_gpa_${level}.tsv"
+
+        output_file="aa/gpa_aa_${level}.tsv"
+
+        cat "$product_file"| grep -v '^$' |
+        while IFS=$'\t' read -r strain cluster _ _ _ _ _; do
+            region=$(echo ${cluster} | sed -E 's/c[0-9]+//g' | sed -E 's/r//g')
+            clu=$(echo ${cluster} | sed -E 's/r[0-9]+//g' | sed -E 's/c//g')
+            json_path="product/antismash_${level}/${strain}/*.json"
+			html_path="product/antismash_${level}/${strain}/index.html"
+			X_aa=$(cat  ${html_path} | pup "div#r${region}c${clu} div.nrps-monomer-details " | grep -v '^$' |
+                grep -E "^:|nrpys:" | sed -E "s/ +//g" | sed -E "s/nrpys:/(/g" |
+                tr "\n" ")" | sed "s/(unknown)/unknown/g")
+            echo -e "${strain}\tr${region}c${clu}\t${level}\t${X_aa}"
+        done > "$output_file"
+done
 
 ```

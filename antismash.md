@@ -789,7 +789,6 @@ done
 cd ~/project/Actionmycetes/antismash/antismash_summary
 mkdir aa
 
-
 for level in complete_taxon complete_untaxon; do
         product_file="product/cluster_gpa_${level}.tsv"
 

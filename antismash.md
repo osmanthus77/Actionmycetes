@@ -672,7 +672,7 @@ cd ~/project/Actionmycetes/antismash/antismash_summary
 for level in complete_taxon complete_untaxon; do
     cat product/gpa_${level}_8.tsv | 
     sed 's/cluster/r1c/g' |
-    cut -f 1,2 > product/cluster_gpa_${level}.tsv
+    cut -f 1,2,6 > product/cluster_gpa_${level}.tsv
 done
 
 # 注意：可能存在cluster2.1的情况，手动修改为 r2c1
@@ -785,6 +785,8 @@ done
 
 ### 4.3 提取产物肽序列
 
+#### method 1
+
 ```shell
 cd ~/project/Actionmycetes/antismash/antismash_summary
 mkdir aa
@@ -795,16 +797,68 @@ for level in complete_taxon complete_untaxon; do
         output_file="aa/gpa_aa_${level}.tsv"
 
         cat "$product_file"| grep -v '^$' |
-        while IFS=$'\t' read -r strain cluster _ _ _ _ _; do
+        while IFS=$'\t' read -r strain cluster product _ _ _ _; do
             region=$(echo ${cluster} | sed -E 's/c[0-9]+//g' | sed -E 's/r//g')
             clu=$(echo ${cluster} | sed -E 's/r[0-9]+//g' | sed -E 's/c//g')
-            json_path="product/antismash_${level}/${strain}/*.json"
 			html_path="product/antismash_${level}/${strain}/index.html"
-			X_aa=$(cat  ${html_path} | pup "div#r${region}c${clu} div.nrps-monomer-details " | grep -v '^$' |
+            X_aa=$(cat  ${html_path} | pup "div#r${region}c${clu} div.nrps-monomer-details " | grep -v '^$' |
                 grep -E "^:|nrpys:" | sed -E "s/ +//g" | sed -E "s/nrpys:/(/g" |
                 tr "\n" ")" | sed "s/(unknown)/unknown/g")
-            echo -e "${strain}\tr${region}c${clu}\t${level}\t${X_aa}"
+            echo -e "${strain}\tr${region}c${clu}\t${level}\t${product}\t${X_aa}"
         done > "$output_file"
+done
+
+```
+
+ps: 这个方法提取出来的肽序列没区分正链、负链，有的序列并不是正确的顺序
+
+#### method 2
+
+另一种方法：提取所有antismash结果中的肽序列，再手动比对序列特征
+
+```shell
+# 提取 overview table
+for family in $(cat ../family.lst); do
+    for level in complete_taxon complete_untaxon; do
+        for strains in $(cat strains_raw/strains_${family}_${level}_8.lst); do
+            mkdir -p table/family_overview/raw/${family}/${level}
+            cat ../antismash_result/${family}/${level}/${strains}/index.html |
+            pup 'table.region-table tbody tr td text{}' |
+            sed 's/Region/|Region/g' |
+            grep '\S' > table/family_overview/raw/${family}/${level}/${strains}_overview_raw.tsv
+            # 修改格式
+            perl html.pl table/family_overview/raw/${family}/${level}/${strains}_overview_raw.tsv |
+            sed "s/^/${strains}_/g; s/Region /cluster/g" |
+            sort | uniq \
+            >> table/family_overview/overview_${family}_${level}_8.tsv
+        done
+    done
+done
+
+for family in $(cat ../family.lst); do
+    for level in complete_taxon complete_untaxon; do
+        overview_file="table/family_overview/overview_${family}_${level}_8.tsv"
+
+        output_file="all_AA/gpa_aa_all.tsv"
+
+        cat "$overview_file"| grep -v '^$' |
+        while IFS=$'\t' read -r strain_cluster _ _ _ _ _ _ _ _ _; do
+            strain=$(echo ${strain_cluster} | sed "s/_cluster/\t/g"| cut -f 1)
+            cluster=$(echo ${strain_cluster} | sed "s/_cluster/\tcluster/g"| cut -f 2)
+
+            if echo "$cluster" | grep -qE 'cluster[0-9]+\.[0-9]+'; then
+                region=$(echo "$cluster" | sed -E 's/cluster([0-9]+)\.[0-9]+/\1/')
+                clu=$(echo "$cluster" | sed -E 's/cluster[0-9]+\.([0-9]+)/\1/')
+            else
+                region=1;
+                clu=$(echo ${cluster} | sed "s/cluster//g")
+            fi
+
+			json_path=$(ls ../antismash_result/${family}/${level}/${strain}/*genomic.json 2>/dev/null | head -n 1)
+            aa=$(python antimash_aa.py ${json_path} ${region} ${clu})
+            echo -e "${strain}\tr${region}c${clu}\t${level}\t${aa}" >> "$output_file"
+        done 
+    done
 done
 
 ```

@@ -794,30 +794,28 @@ mkdir aa
 for level in complete_taxon complete_untaxon; do
         product_file="product/cluster_gpa_${level}.tsv"
 
-        output_file="aa/gpa_aa_${level}.tsv"
+        output_file="aa/gpa_aa.tsv"
 
         cat "$product_file"| grep -v '^$' |
         while IFS=$'\t' read -r strain cluster product _ _ _ _; do
             region=$(echo ${cluster} | sed -E 's/c[0-9]+//g' | sed -E 's/r//g')
             clu=$(echo ${cluster} | sed -E 's/r[0-9]+//g' | sed -E 's/c//g')
-			html_path="product/antismash_${level}/${strain}/index.html"
-            X_aa=$(cat  ${html_path} | pup "div#r${region}c${clu} div.nrps-monomer-details " | grep -v '^$' |
-                grep -E "^:|nrpys:" | sed -E "s/ +//g" | sed -E "s/nrpys:/(/g" |
-                tr "\n" ")" | sed "s/(unknown)/unknown/g")
-            echo -e "${strain}\tr${region}c${clu}\t${level}\t${product}\t${X_aa}"
-        done > "$output_file"
+			json_path=$(ls product/antismash_${level}/${strain}/*genomic.json 2>/dev/null | head -n 1)
+            aa=$(python antimash_aa.py ${json_path} ${region} ${clu})
+            echo -e "${strain}\tr${region}c${clu}\t${level}\t${product}\t${aa}" >> "$output_file"
+        done
 done
 
 ```
 
-ps: 这个方法提取出来的肽序列没区分正链、负链，有的序列并不是正确的顺序
+
 
 #### method 2
 
 另一种方法：提取所有antismash结果中的肽序列，再手动比对序列特征
 
 ```shell
-# 提取 overview table
+# 重新提取 overview table
 for family in $(cat ../family.lst); do
     for level in complete_taxon complete_untaxon; do
         for strains in $(cat strains_raw/strains_${family}_${level}_8.lst); do
@@ -842,7 +840,7 @@ for family in $(cat ../family.lst); do
         output_file="all_AA/gpa_aa_all.tsv"
 
         cat "$overview_file"| grep -v '^$' |
-        while IFS=$'\t' read -r strain_cluster _ _ _ _ _ _ _ _ _; do
+        while IFS=$'\t' read -r strain_cluster _ _ _ product _ similarity _ _ _; do
             strain=$(echo ${strain_cluster} | sed "s/_cluster/\t/g"| cut -f 1)
             cluster=$(echo ${strain_cluster} | sed "s/_cluster/\tcluster/g"| cut -f 2)
 

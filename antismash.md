@@ -644,17 +644,18 @@ wc -l table/mibig/*tsv
 ```shell
 cd  ~/project/Actionmycetes/antismash/antismash_summary
 mkdir product
+dos2unix gpa.tsv 
 for level in complete_taxon complete_untaxon; do
     cat table/overview/overview_whole_${level}_8.tsv |
         tsv-join -d 1 -f table/mibig/mibig_whole_${level}_8.tsv -k 1 --append-fields 2 | # 合并product和MiBIG
         tsv-filter --or --str-in-fld 7:High --str-in-fld 7:Medium  | # 筛选：相似度Medium和High,可选
         sed 's/_cluster/\tcluster/g' |
-        grep -F -f "gpa.tsv" > product/gpa_${level}_8.tsv 
+        grep -F -i -f "gpa.tsv" >> product/gpa_${level}_8.tsv 
         wc -l product/gpa_${level}_8.tsv
 done
 
 wc -l product/*
-#      43 product/gpa_complete_taxon_8.tsv
+#      46 product/gpa_complete_taxon_8.tsv
 #      23 product/gpa_complete_untaxon_8.tsv
 
 ```
@@ -701,7 +702,7 @@ cd ~/project/Actionmycetes/antismash/antismash_summary
 
 for level in complete_taxon complete_untaxon; do
     for se in dna aa; do
-        mkdir domain_${se};
+        mkdir -p aa1/domain_${se}
 
         for i in $(cat product/cluster_gpa_${level}.tsv | sed "s/\t/,/g"); do
             echo ${i};
@@ -710,7 +711,7 @@ for level in complete_taxon complete_untaxon; do
             echo ${num};
             js="product/antismash_${level}/${sample}/regions.js";
             type=$(python ${se}_antismash_pp_for_complete_uncomplete.py "${js}" "${num}" "${sample}");
-            echo ${type} | sed "s/]/]\n/g" >> domain_${se}/domain_${se}_all_${level}.txt;
+            echo ${type} | sed "s/]/]\n/g" >> aa1/domain_${se}/domain_${se}_all_${level}.txt;
         done
     done
 done
@@ -718,12 +719,12 @@ done
 # 修改格式
 for level in complete_taxon complete_untaxon; do
     for se in dna aa; do
-        cat domain_${se}/domain_${se}_all_${level}.txt |
-        sed "s/\[//g" | sed "s/\]//g"|sed "s/'//g" | sed "s/,/\n/g"|
+        cat aa1/domain_${se}/domain_${se}_all_${level}.txt |
+        sed "s/\[//g" | sed "s/\]//g"| sed "s/'//g" | sed "s/,/\n/g" |
         sed "s/ >/>/g" | sed "s/+/\t/g" |
         sed "s/\t/\n/g" |
         sed '/^$/d' \
-        > domain_${se}/ok_domain_${se}_all_${level}.txt
+        >> aa1/domain_${se}/ok_domain_${se}_all_${level}.txt
     done
 done
 
@@ -745,41 +746,42 @@ cd ~/project/Actionmycetes/antismash/antismash_summary
 
 for level in complete_taxon complete_untaxon; do
     for se in dna aa; do
-        cat domain_${se}/ok_domain_${se}_all_${level}.txt |
+        cat aa1/domain_${se}/domain_${se}_all_${level}.txt |
         grep -A 1 -E "Condensation|Cglyc" |
         sed '/^--$/d' \
-        >> domain_${se}/donmain_C${se}.txt
+        >> aa1/domain_${se}/domain_C${se}.txt
 
-        cat domain_${se}/ok_domain_${se}_all_${level}.txt |
+        cat aa1/domain_${se}/domain_${se}_all_${level}.txt |
         grep -A 1 -E "AMP-binding" |
         sed '/^--$/d' \
-        >> domain_${se}/donmain_A${se}.txt
+        >> aa1/domain_${se}/domain_A${se}.txt
 
-        cat domain_${se}/ok_domain_${se}_all_${level}.txt |
-        grep -A 1 -E "PCP" \
-        >> domain_${se}/donmain_T${se}.txt
+        cat aa1/domain_${se}/domain_${se}_all_${level}.txt |
+        grep -A 1 -E "\-PCP\-" |
+        sed '/^--$/d' \
+        >> aa1/domain_${se}/domain_T${se}.txt
     done
 done
 
 for se in dna aa; do
         for domain in A C T; do
-            echo domain_${se}/donmain_${domain}${se}.txt
-            grep ">" domain_${se}/donmain_${domain}${se}.txt | wc -l 
+            echo aa1/domain_${se}/domain_${domain}${se}.txt
+            grep ">" aa1/domain_${se}/domain_${domain}${se}.txt | wc -l 
     done
 done
 
-#domain_dna/donmain_Adna.txt 	
-#     565
-#domain_dna/donmain_Cdna.txt 	
-#     464
-#domain_dna/donmain_Tdna.txt 	
-#     512
-#domain_aa/donmain_Aaa.txt 	
-#     565
-#domain_aa/donmain_Caa.txt 	
-#     464
-#domain_aa/donmain_Taa.txt 	
-#     531
+#aa1/domain_dna/domain_Adna.txt
+#     588
+#aa1/domain_dna/domain_Cdna.txt
+#     482
+#aa1/domain_dna/domain_Tdna.txt
+#     534
+#aa1/domain_aa/domain_Aaa.txt
+#     588
+#aa1/domain_aa/domain_Caa.txt
+#     482
+#aa1/domain_aa/domain_Taa.txt
+#     534
 
 ```
 
@@ -789,12 +791,12 @@ done
 
 ```shell
 cd ~/project/Actionmycetes/antismash/antismash_summary
-mkdir aa
+mkdir aa1
 
 for level in complete_taxon complete_untaxon; do
         product_file="product/cluster_gpa_${level}.tsv"
 
-        output_file="aa/gpa_aa.tsv"
+        output_file="aa1/new_gpa_aa.tsv"
 
         cat "$product_file"| grep -v '^$' |
         while IFS=$'\t' read -r strain cluster product _ _ _ _; do
@@ -802,7 +804,7 @@ for level in complete_taxon complete_untaxon; do
             clu=$(echo ${cluster} | sed -E 's/r[0-9]+//g' | sed -E 's/c//g')
 			json_path=$(ls product/antismash_${level}/${strain}/*genomic.json 2>/dev/null | head -n 1)
             aa=$(python antimash_aa.py ${json_path} ${region} ${clu})
-            echo -e "${strain}\tr${region}c${clu}\t${level}\t${product}\t${aa}" >> "$output_file"
+            echo -e "${strain}\tr${region}c${clu}\t${product}\t${aa}" >> "$output_file"
         done
 done
 
@@ -837,7 +839,7 @@ for family in $(cat ../family.lst); do
     for level in complete_taxon complete_untaxon; do
         overview_file="table/family_overview/overview_${family}_${level}_8.tsv"
 
-        output_file="all_AA/gpa_aa_all.tsv"
+        output_file="aa2/aa_all_1559.tsv"
 
         cat "$overview_file"| grep -v '^$' |
         while IFS=$'\t' read -r strain_cluster _ _ _ product _ similarity _ _ _; do
@@ -854,9 +856,11 @@ for family in $(cat ../family.lst); do
 
 			json_path=$(ls ../antismash_result/${family}/${level}/${strain}/*genomic.json 2>/dev/null | head -n 1)
             aa=$(python antimash_aa.py ${json_path} ${region} ${clu})
-            echo -e "${strain}\tr${region}c${clu}\t${level}\t${aa}" >> "$output_file"
+            echo -e "${strain}\tr${region}c${clu}\t${family}\t${level}\t${product}\t${similarity}\t${aa}" >> "$output_file"
         done 
     done
 done
+
+cat aa2/aa_all_1559.tsv | sed '/None/d' | tsv-filter --or --str-in-fld 6:High --str-in-fld 6:Medium | tsv-filter --not-empty 7 >> aa2/aa_all_1559_filter.tsv
 
 ```

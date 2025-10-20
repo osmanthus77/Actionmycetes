@@ -359,7 +359,7 @@ wc -l run/check/success.tsv
 # 激活环境
 cd ~/project/Actionmycetes/antismash
 source ~/miniconda3/bin/activate
-conda antivate antismash
+conda activate antismash
 
 # 选取几个作为测试
 for family in Actinomycetaceae; do
@@ -571,7 +571,7 @@ wc -l antismash_summary/empty_dir.tsv
 ### 3.1 统计 overview-table 信息
 
 ```shell
-cd  ~/project/Actionmycetes/antismash/antismash_summary
+cd ~/project/Actionmycetes/antismash/antismash_summary
 mkdir -p table/overview table/mibig
 
 for family in $(cat ../family.lst); do
@@ -708,10 +708,11 @@ for level in complete_taxon complete_untaxon; do
             echo ${i};
             sample=$(echo ${i} | cut -d "," -f 1);
             num=$(echo ${i} | cut -d "," -f 2);
+            gpa=$(echo ${i} | cut -d "," -f 3);
             echo ${num};
             js="product/antismash_${level}/${sample}/regions.js";
-            type=$(python ${se}_antismash_pp_for_complete_uncomplete.py "${js}" "${num}" "${sample}");
-            echo ${type} | sed "s/]/]\n/g" >> aa1/domain_${se}/domain_${se}_all_${level}.txt;
+            type=$(python ${se}_antismash_pp_for_complete_uncomplete.py "${js}" "${num}" "${sample}" "${gpa}");
+            echo ${type} | sed "s/]/]\n/g" >> aa1/domain_${se}/domain_${se}_68.txt;
         done
     done
 done
@@ -719,12 +720,12 @@ done
 # 修改格式
 for level in complete_taxon complete_untaxon; do
     for se in dna aa; do
-        cat aa1/domain_${se}/domain_${se}_all_${level}.txt |
+        cat aa1/domain_${se}/domain_${se}_66.txt |
         sed "s/\[//g" | sed "s/\]//g"| sed "s/'//g" | sed "s/,/\n/g" |
         sed "s/ >/>/g" | sed "s/+/\t/g" |
         sed "s/\t/\n/g" |
         sed '/^$/d' \
-        >> aa1/domain_${se}/ok_domain_${se}_all_${level}.txt
+        >> aa1/domain_${se}/ok_domain_${se}_68.txt
     done
 done
 
@@ -803,7 +804,7 @@ for level in complete_taxon complete_untaxon; do
             region=$(echo ${cluster} | sed -E 's/c[0-9]+//g' | sed -E 's/r//g')
             clu=$(echo ${cluster} | sed -E 's/r[0-9]+//g' | sed -E 's/c//g')
 			json_path=$(ls product/antismash_${level}/${strain}/*genomic.json 2>/dev/null | head -n 1)
-            aa=$(python antimash_aa.py ${json_path} ${region} ${clu})
+            aa=$(python antismash_json_aa.py ${json_path} ${region} ${clu})
             echo -e "${strain}\tr${region}c${clu}\t${product}\t${aa}" >> "$output_file"
         done
 done

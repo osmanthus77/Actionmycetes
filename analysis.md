@@ -266,7 +266,42 @@ awk '/^ORIGIN/{flag=1} flag' Streptomyces_sp_DSM_11171_feglymycin_bgc.gbk | sed 
 ## BGC clinker
 
 ```shell
-# use .gbk file to clinker
+# extract BGC and flanking sequence about 10k
+
+cd ~/project/Actionmycetes/antismash/antismash_summary
+
+# extract BGC location in genome from html file
+for level in complete_taxon complete_untaxon; do
+    product_file="product/cluster_gpa_${level}.tsv"
+    output_file="aa1/bgc_flanking_10k/bgc_10k_locus_location.tsv"
+    
+    cat "$product_file" | grep -v '^$' |
+    while IFS=$'\t' read -r strain cluster product _ _ _; do
+        locus=$(cat product/antismash_${level}/${strain}/index.html |
+        pup "div.page#${cluster} div.description-container div.heading text{}" |
+        grep 'NZ_' |
+        sed 's/\..*//')
+
+        location=$(cat product/antismash_${level}/${strain}/index.html |
+        pup "div.page#${cluster} div.description-text text{}" |
+        grep 'Location:' |
+        sed -E "s/.*Location: ([0-9,]+) - ([0-9,]+) nt\. \(total: ([0-9,]+) nt\).*/\1\t\2\t\3/" )
+
+        echo "${strain}\t${level}\t${cluster}\t${locus}\t${location}" \
+        >> "$output_file"
+        
+    done
+done
+
+# extract BGC and flanking sequence with python script
+python antismash_flanking.py aa1/bgc_flanking_10k/bgc_10k_locus_location.tsv product aa1/bgc_flanking_10k/sequence
+cat aa1/bgc_flanking_10k/sequence/* >> aa1/bgc_flanking_10k/bgc_flanking_all.txt
+
+```
+
+
+```shell
+# use BGC gbk file to clinker
 cd ~/project/Actionmycetes/antismash/antismash_summary
 
 for level in complete_taxon complete_untaxon; do
@@ -290,6 +325,81 @@ done
 
 # There are 'three' regions need to replace correct gbk file by hand
 
+cd ~/project/Actionmycetes/antismash/cluster_clinker
+clinker gbk_file/*gbk -s bgc_clinker_68.json -p bgc_cliner_68_raw.svg
+
+```
+
+
+```shell
+# known GPA genome run antismash
+cd ~/project/Actionmycetes/antismash/known_gpa_antismash
+source ~/miniconda3/bin/activate
+conda activate antismash
+
+cat known_gpa_strain_list.txt |
+parallel --colsep '\t' --no-run-if-empty --linebuffer -k -j 1 "
+    echo {1};
+    antismash --taxon bacteria -c 4 --cb-general --cc-mibig --cb-knownclusters  --pfam2go --asf --genefinding-tool prodigal genome/{1}/*genomic.gbff.gz --output-dir antismash_result/{1}
+    "
 
 
 ```
+
+
+```shell
+# extract domain fron known GPA in mibig file
+
+cd ~/project/Actionmycetes/antismash/antismash_summary
+
+for i in $(cat product/knownGPA_mibig_list.txt | sed "s/\t/,/g"); do
+    echo ${i};
+    sample=$(echo ${i} | cut -d "," -f 1);
+    num=$(echo ${i} | cut -d "," -f 2);
+    gpa=$(echo ${i} | cut -d "," -f 3)
+    js="product/knownGPA_mibig_antismash/${sample}/regions.js";
+    type=$(python aa_antismash_pp_for_complete_uncomplete.py "${js}" "${num}" "${sample}" "${gpa}");
+    echo ${type} | sed "s/]/]\n/g" |
+    sed "s/\[//g" | sed "s/\]//g"| sed "s/'//g" | sed "s/,/\n/g" |
+    sed "s/ >/>/g" | sed "s/+/\t/g" |
+    sed "s/\t/\n/g" |
+    sed '/^$/d' \
+    >> aa1/domain_aa/knownGPA_mibig/domain_aa_knownGPA_mibig.txt;
+done
+
+# extract domain C\A\T
+cat aa1/domain_aa/knownGPA_mibig/domain_aa_knownGPA_mibig.txt |
+grep -A 1 -E "Condensation|Cglyc" |
+sed '/^--$/d' \
+>> aa1/domain_aa/knownGPA_mibig/domain_Caa.txt
+
+cat aa1/domain_aa/knownGPA_mibig/domain_aa_knownGPA_mibig.txt |
+grep -A 1 -E "AMP-binding" |
+sed '/^--$/d' \
+>> aa1/domain_aa/knownGPA_mibig/domain_Aaa.txt
+
+cat aa1/domain_aa/knownGPA_mibig/domain_aa_knownGPA_mibig.txt |
+grep -A 1 -E "\-PCP\-" |
+sed '/^--$/d' \
+>> aa1/domain_aa/knownGPA_mibig/domain_Taa.txt
+
+# combine with previous C/A/T domain aminoacid sequence file in complete
+for i in C A T; do
+    cat aa1/domain_aa/domain_${i}aa_68.txt aa1/domain_aa/knownGPA_mibig/domain_${i}aa.txt >> aa1/domain_aa/domain_${i}aa_79.txt
+    cp aa1/domain_aa/domain_${i}aa_79.txt ~/project/Actionmycetes/analysis_79/sequence_aa/domain_${i}aa_79.txt
+done
+
+
+cd ~/project/Actionmycetes/analysis_79
+for i in C A T; do
+    cat sequence_aa/domain_${i}aa_79.txt | grep '>' | sed 's/>//g' >> annotate/${i}domain_79_annotate.txt
+done
+
+for i in C A T; do
+    mafft --auto sequence_aa/domain_${i}aa_79.txt > msa/domain_${i}aa_79.aln.fa
+    trimal -in msa/domain_${i}aa_79.aln.fa -out trim/domain_${i}aa_79.trim.fa -automated1
+    Fasttree trim/domain_${i}aa_79.trim.fa > fasttree/domain_${i}aa_79.nwk
+done
+
+```
+

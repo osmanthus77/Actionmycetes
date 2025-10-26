@@ -403,3 +403,85 @@ done
 
 ```
 
+
+```shell
+# extract P450 locus_tag and translation of knwon bgc result from region.js
+cd ~/project/Actionmycetes/antismash/antismash_summary
+
+    product_file="product/knownGPA_mibig_list.txt"
+
+    P450_file="aa1/p450_aa/p450_gene_aa_raw_11.txt"
+
+    cat "$product_file" | grep -v '^$' |
+    while IFS=$'\t' read -r strain cluster _ _ _ _; do
+        echo "${strain}\t${cluster}"
+        js_file=product/knownGPA_mibig_antismash/${strain}/regions.js
+        python antismash_js_p450_11.py ${js_file} ${cluster} ${strain} \
+        >> "$P450_file"
+    done
+
+
+cat aa1/p450_aa/p450_gene_aa_raw_11.txt | grep '>' | 
+    sed 's/>//g' | sed -E "s/-/\t/g; s/\+/\t/g" \
+    >> aa1/p450_aa/p450_identifier_raw_11.tsv
+
+# filter the true P450 gene identifier by hand
+
+cat aa1/p450_aa/p450_identifier_11.tsv | tsv-select -f 3 >> aa1/p450_aa/identifier_11.tsv
+
+# then filter the raw fasta file
+cat aa1/p450_aa/p450_gene_aa_raw_11.txt | grep -A 1 -F -i -f aa1/p450_aa/identifier_11.tsv | sed '/--/d' \
+    >> aa1/p450_aa/p450_gene_aa_11.txt
+
+# tree
+cd ~/project/Actionmycetes/analysis_p450
+mafft --auto sequence_aa/p450_gene_aa_79.txt > msa/p450_aa_79.aln.fa
+trimal -in msa/p450_aa_79.aln.fa -out trim/p450_aa_79.trim.fa -automated1
+Fasttree trim/p450_aa_79.trim.fa  > fasttree/p450_aa_79.nwk
+```
+
+```shell
+# delete 4 abnormal BGC and fasttree again
+cd ~/project/Actionmycetes/analysis_75
+
+
+for i in C A T; do
+    mafft --auto sequence_aa/domain_${i}aa_75.txt > msa/domain_${i}aa_75.aln.fa
+    trimal -in msa/domain_${i}aa_75.aln.fa -out trim/domain_${i}aa_75.trim.fa -automated1
+    Fasttree trim/domain_${i}aa_75.trim.fa > fasttree/domain_${i}aa_75.nwk
+done
+
+for i in C A T; do
+    script=fasttree/table2itol/table2itol.R
+    Rscript ${script} -a -D fasttree/domain_${i}aa_75  -i Strain -l Strain -w 0.5 annotate/${i}domain_75_annotate.xlsx
+done
+
+```
+
+```shell
+# filter the C domain and A domain of the central Hpg
+cd ~/project/Actionmycetes/analysis_75
+
+cat annotate/Adomain_75_annotate.xlsx | grep 'A_H0' | tsv-select -f 1 >> sequence_aa/Adomain_75_Hpg_filter.txt
+cat annotate/Cdomain_75_annotate.xlsx | grep 'C_H0' | tsv-select -f 1 >> sequence_aa/Cdomain_75_Hpg_filter.txt
+#there is only strain colum in files
+
+
+# add the C domain and A domain of fegmycin's Hpg
+
+cat sequence_aa/domain_Caa_75.txt | grep -A 1 -F -i -f sequence_aa/Cdomain_75_Hpg_filter.txt | sed '/--/d' >> sequence_aa/domain_Caa_75_Hpg.txt
+cat sequence_aa/domain_Aaa_75.txt | grep -A 1 -F -i -f sequence_aa/Adomain_75_Hpg_filter.txt | sed '/--/d' >> sequence_aa/domain_Aaa_75_Hpg.txt
+
+for i in C A; do
+    mafft --auto sequence_aa/domain_${i}aa_75_Hpg.txt > msa/domain_${i}aa_75_Hpg.aln.fa
+    trimal -in msa/domain_${i}aa_75_Hpg.aln.fa -out trim/domain_${i}aa_75_Hpg.trim.fa -automated1
+    Fasttree trim/domain_${i}aa_75_Hpg.trim.fa > fasttree/domain_${i}aa_75_Hpg.nwk
+done
+
+for i in C A; do
+    script=fasttree/table2itol/table2itol.R
+    Rscript ${script} -a -D fasttree/domain_${i}aa_75_Hpg  -i Strain -l Strain -w 0.5 annotate/${i}domain_75_Hpg_annotate.xlsx
+done
+
+Rscript ${script} -a -D fasttree/domain_Aaa_75_Hpg_2  -i Strain -l Strain -w 0.5 annotate/Adomain_75_Hpg_annotate.xlsx
+```

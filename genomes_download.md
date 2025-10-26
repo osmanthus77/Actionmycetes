@@ -579,6 +579,14 @@ nwr template summary/Actionmycetes.assembly.tsv \
     --rank family --rank genus \
     --lineage family --lineage genus
 
+
+nwr template summary/Actionmycetes.assembly.tsv \
+    --count \
+    --in ASSEMBLY/pass.lst \
+    --rank family --rank genus \
+    --lineage family --lineage genus
+
+
 # 菌株统计，strains.taxon.tsv and taxa.tsv
 bash Count/strains.sh
 cat Count/taxa.tsv |
@@ -596,7 +604,7 @@ ps: Allon_opa_DSM_45601_GCF_003002095_1-Allonocardiopsis属，无科分类，Str
 
 | item    | count |
 | ------- | ----: |
-| strain  | 12302 |
+| strain  | 12531 |
 | species |  1783 |
 | genus   |   140 |
 | family  |    10 |
@@ -605,10 +613,12 @@ ps: Allon_opa_DSM_45601_GCF_003002095_1-Allonocardiopsis属，无科分类，Str
 
 | family               | #species | #strains |
 | -------------------- | -------: | -------: |
-| Actinomycetaceae     |      121 |      615 |
-| Micromonosporaceae   |      258 |     1020 |
+| Actinomycetaceae     |      121 |      633 |
+| Micromonosporaceae   |      258 |     1024 |
 | Nocardiopsidaceae    |       58 |      147 |
-| Pseudonocardiaceae   |      322 |      700 |
-| Streptomycetaceae    |      793 |     9158 |
-| Streptosporangiaceae |      142 |      484 |
-| Thermomonosporaceae  |       86 |      173 |
+| Pseudonocardiaceae   |      322 |      705 |
+| Streptomycetaceae    |      793 |     9355 |
+| Streptosporangiaceae |      142 |      489 |
+| Thermomonosporaceae  |       86 |      174 |
+| Carbonactinosporaceae|        1 |        3 |
+| Thermomonosporaceae  |        1 |        1 |

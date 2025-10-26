@@ -579,14 +579,6 @@ nwr template summary/Actionmycetes.assembly.tsv \
     --rank family --rank genus \
     --lineage family --lineage genus
 
-
-nwr template summary/Actionmycetes.assembly.tsv \
-    --count \
-    --in ASSEMBLY/pass.lst \
-    --rank family --rank genus \
-    --lineage family --lineage genus
-
-
 # 菌株统计，strains.taxon.tsv and taxa.tsv
 bash Count/strains.sh
 cat Count/taxa.tsv |

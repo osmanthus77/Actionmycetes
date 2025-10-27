@@ -438,6 +438,9 @@ cd ~/project/Actionmycetes/analysis_p450
 mafft --auto sequence_aa/p450_gene_aa_79.txt > msa/p450_aa_79.aln.fa
 trimal -in msa/p450_aa_79.aln.fa -out trim/p450_aa_79.trim.fa -automated1
 Fasttree trim/p450_aa_79.trim.fa  > fasttree/p450_aa_79.nwk
+
+script=fasttree/table2itol/table2itol.R
+Rscript ${script} -a -D fasttree/p450_75  -i Strain -l Strain -w 0.5 --colour-file fasttree/p450_75/color_p450.yml sequence_aa/p450_annotate_75.xlsx
 ```
 
 ```shell
@@ -480,7 +483,7 @@ done
 
 for i in C A; do
     script=fasttree/table2itol/table2itol.R
-    Rscript ${script} -a -D fasttree/domain_${i}aa_75_Hpg  -i Strain -l Strain -w 0.5 annotate/${i}domain_75_Hpg_annotate.xlsx
+    Rscript ${script} -a -D fasttree/domain_${i}aa_75_Hpg  -i Strain -l Strain -w 0.5 --colour-file fasttree/domain_${i}aa_75_Hpg/color_Hpg.yml annotate/${i}domain_75_Hpg_annotate.xlsx
 done
 
 Rscript ${script} -a -D fasttree/domain_Aaa_75_Hpg_2  -i Strain -l Strain -w 0.5 annotate/Adomain_75_Hpg_annotate.xlsx

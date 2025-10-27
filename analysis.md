@@ -453,7 +453,7 @@ done
 
 for i in C A T; do
     script=fasttree/table2itol/table2itol.R
-    Rscript ${script} -a -D fasttree/domain_${i}aa_75  -i Strain -l Strain -w 0.5 annotate/${i}domain_75_annotate.xlsx
+    Rscript ${script} -a -D fasttree/domain_${i}aa_75  -i Strain -l Strain -w 0.5 --colour-file fasttree/domain_${i}aa_75/color_${i}.yml annotate/${i}domain_75_annotate.xlsx
 done
 
 ```

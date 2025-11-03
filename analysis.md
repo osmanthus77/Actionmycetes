@@ -142,12 +142,13 @@ for level in complete_taxon complete_untaxon; do
             region=$(echo ${cluster} | sed -E 's/c[0-9]+//g' | sed -E 's/r//g')
             clu=$(echo ${cluster} | sed -E 's/r[0-9]+//g' | sed -E 's/c//g')
 			json_path=$(ls product/antismash_${level}/${strain}/*genomic.json 2>/dev/null | head -n 1)
-            cds=$(python antimash_cds.py ${json_path} ${region} ${clu})
+            cds=$(python antismash_json_nrps_identifier.py ${json_path} ${region} ${clu})
             identifier=$(echo $cds | sed -E "s/\[//g "| sed "s/\]//g" | sed "s/'//g"  | sed 's/, /\n/g')
             echo ${identifier} | sed "s#^#${strain}\tr${region}c${clu}\t${product}\t#g" \
             >> "$identifier_file"
         done
 done
+
 
 # cds格式
 # ['SXIN_RS02445', 'SXIN_RS02440', 'SXIN_RS02435', 'SXIN_RS02430']
@@ -193,21 +194,23 @@ END {
 ```
 
 ```shell
-# split sequence into GPA one file
-cd ~/project/Actionmycetes/antismash/antismash_summary
+# split sequence into each GPA type in one file
+cd ~/project/Actionmycetes/analysis_75/sequence
 
-for i in 1-4 corbomycin GP6738 misaugamycin rimomycin; do
+for i in 1-4 complenstatin corbomycin GP6738 misaugamycin rimomycin; do
     cat domain_C_GPA.txt | grep "${i}" | cut -f 1 > C${i}.txt
 done
 
-for i in 1-4 corbomycin GP6738 misaugamycin rimomycin; do
-    cat domain_Caa.txt | grep -A 1 -F -i -f C${i}.txt | sed '/^--$/d' > domain_Caa_${i}.txt
+for i in 1-4 complenstatin corbomycin GP6738 misaugamycin rimomycin; do
+    cat domain_Caa_75.txt | grep -A 1 -F -i -f C${i}.txt | sed '/^--$/d' > domain_Caa_${i}.txt
 done
 
-for i in 1-4 corbomycin GP6738 misaugamycin rimomycin; do
-    mafft --auto sequence_aa/domain_Caa_${i}.txt > msa/domain_Caa_${i}.aln.fa
+cd ~/project/Actionmycetes/analysis_75
+
+for i in 1-4 complenstatin corbomycin GP6738 misaugamycin rimomycin; do
+    mafft --auto sequence/domain_Caa_${i}.txt > msa/domain_Caa_${i}.aln.fa
     trimal -in msa/domain_Caa_${i}.aln.fa -out trim/domain_Caa_${i}.trim.fa -automated1
-    FastTree trim/domain_Caa_${i}.trim.fa > fasttree/domain_Caa_${i}.nwk
+    FastTree trim/domain_Caa_${i}.trim.fa > fasttree/type/domain_Caa_${i}.nwk
 done
 
 ```
@@ -263,7 +266,7 @@ awk '/^ORIGIN/{flag=1} flag' Streptomyces_sp_DSM_11171_feglymycin_bgc.gbk | sed 
 
 
 
-## BGC clinker
+- BGC clinker
 
 ```shell
 # extract BGC and flanking sequence about 10k
@@ -488,3 +491,65 @@ done
 
 Rscript ${script} -a -D fasttree/domain_Aaa_75_Hpg_2  -i Strain -l Strain -w 0.5 annotate/Adomain_75_Hpg_annotate.xlsx
 ```
+
+
+```shell
+# extract X domain and tree
+cd ~/project/Actionmycetes/antismash/antismash_summary/aa1/domain_aa
+cat ok_domain_aa_75.txt | grep -A 1 -E "\-X\-" | sed '/--/d'  >> domain_X_aa_75.txt
+cp domain_X_aa_75.txt ~/project/Actionmycetes/analysis_75/sequence_aa
+
+cd ~/project/Actionmycetes/analysis_75
+cat sequence_aa/domain_X_aa_75.txt | grep '>' | sed 's/>//g' >> annotate/Xdomain_75_annotate.tsv
+
+mafft --auto sequence_aa/domain_X_aa_75.txt > msa/domain_X_aa_75.aln.fa
+trimal -in msa/domain_X_aa_75.aln.fa -out trim/domain_X_aa_75.trim.fa -automated1
+Fasttree trim/domain_X_aa_75.trim.fa > fasttree/domain_X_aa_75.nwk
+
+script=fasttree/table2itol/table2itol.R
+Rscript ${script} -a -D fasttree/domain_X_75 -i Strain -l Strain -w 0.5 --colour-file fasttree/domain_X_75/color_X.yml annotate/Xdomain_75_annotate.xlsx
+
+```
+
+```shell
+cd ~/project/Actionmycetes/antismash/known_gpa_antismash
+
+# overview table
+for strains in $(cat known_gpa_strain_list.txt); do
+    mkdir -p table/overview/raw/
+    cat antismash_result/${strains}/index.html |
+    pup 'table.region-table tbody tr td text{}' |
+    sed 's/Region/|Region/g' |
+    grep '\S' > table/overview/raw/${strains}_overview_raw.tsv
+
+    perl html.pl table/overview/raw/${strains}_overview_raw.tsv | 
+    sed "s/^/${strains}_/g; s/Region /cluster/g" |
+    sort | uniq \
+    >> table/overview/overview_all_8.tsv
+done
+
+# peptide aminoacids
+cat table/overview/overview_all_8.tsv | grep -v '^$' |
+while IFS=$'\t' read -r strain_cluster _ _ _ product _ similarity _ _ _; do
+    output_file="aa_all_27.tsv"
+
+    strain=$(echo ${strain_cluster} | sed "s/_cluster/\t/g"| cut -f 1)
+    cluster=$(echo ${strain_cluster} | sed "s/_cluster/\tcluster/g"| cut -f 2)
+
+    if echo "$cluster" | grep -qE 'cluster[0-9]+\.[0-9]+'; then
+        region=$(echo "$cluster" | sed -E 's/cluster([0-9]+)\.[0-9]+/\1/')
+        clu=$(echo "$cluster" | sed -E 's/cluster[0-9]+\.([0-9]+)/\1/')
+    else
+        region=1;
+        clu=$(echo ${cluster} | sed "s/cluster//g")
+    fi
+
+	json_path=$(ls antismash_result/${strain}/*genomic.json 2>/dev/null | head -n 1)
+    aa=$(python antismash_aa.py ${json_path} ${region} ${clu})
+    echo -e "${strain}\tr${region}c${clu}\t${product}\t${similarity}\t${aa}" |
+    >> "$output_file"
+done
+
+```
+
+

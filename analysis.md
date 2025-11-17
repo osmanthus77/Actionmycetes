@@ -42,10 +42,6 @@ cat aa2/domain_aa/domain_Caa_1559.txt | grep '>' | sed 's/>//g' >> aa2/domain_aa
 ```
 
 
-
-
-
-
 ## 比对构树
 
 ```shell
@@ -307,6 +303,7 @@ cat aa1/bgc_flanking_10k/sequence/* >> aa1/bgc_flanking_10k/bgc_flanking_all.txt
 # use BGC gbk file to clinker
 cd ~/project/Actionmycetes/antismash/antismash_summary
 
+# copy gbk file from antismash_result file to new dic
 for level in complete_taxon complete_untaxon; do
     product_file="product/cluster_gpa_${level}.tsv"
 
@@ -325,11 +322,28 @@ for level in complete_taxon complete_untaxon; do
         
     done
 done
+# PS: There are 'three' regions need to replace correct gbk file by hand
 
-# There are 'three' regions need to replace correct gbk file by hand
+
+# copy gbk file from mibig dic to new dic
+cat product/knownGPA_mibig_list.txt | grep -v '^$' |
+    while IFS=$'\t' read -r strain cluster product _ _ _; do
+        clu=$(echo $cluster | awk 'match($0, /r[0-9]*c([0-9]+)/) {
+            num = substr($0, RSTART + 3, RLENGTH - 3);
+            printf "region%03d\n", num;
+            }')
+        echo "${strain}_${clu}"
+        cluster_gbk_file=$(ls product/knownGPA_mibig_antismash/${strain}/*${clu}.gbk | head -n 1)
+        echo "${cluster_gbk_file}"
+
+        cp ${cluster_gbk_file} ~/project/Actionmycetes/cluster_clinker/gbk_file/${strain}.gbk
+        
+done
+
 
 cd ~/project/Actionmycetes/antismash/cluster_clinker
 clinker gbk_file/*gbk -s bgc_clinker_68.json -p bgc_cliner_68_raw.svg
+
 
 ```
 
@@ -508,6 +522,19 @@ Fasttree trim/domain_X_aa_75.trim.fa > fasttree/domain_X_aa_75.nwk
 
 script=fasttree/table2itol/table2itol.R
 Rscript ${script} -a -D fasttree/domain_X_75 -i Strain -l Strain -w 0.5 --colour-file fasttree/domain_X_75/color_X.yml annotate/Xdomain_75_annotate.xlsx
+
+
+# extract E domain and TE domain
+cd ~/project/Actionmycetes/antismash/antismash_summary/aa1/domain_aa
+cat ok_domain_aa_75.txt | 
+    grep -A 1 -E "Epimerization" |
+    sed '/^--$/d' \
+    >> ~/project/Actionmycetes/analysis_75/sequence_aa/domain_Eaa_75.txt
+
+cat ok_domain_aa_75.txt | 
+    grep -A 1 -E "Thioesterase" |
+    sed '/^--$/d' \
+    >> ~/project/Actionmycetes/analysis_75/sequence_aa/domain_TEaa_75.txt
 
 ```
 

@@ -343,7 +343,7 @@ done
 
 cd ~/project/Actionmycetes/antismash/cluster_clinker
 clinker gbk_file/*gbk -s bgc_clinker_68.json -p bgc_cliner_68_raw.svg
-
+clinker gbk_11/*gbk -s bgc_11.json -p bgc_11.html -gf gene_function_11.csv -cm gene_color_11.csv
 
 ```
 

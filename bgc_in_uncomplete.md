@@ -128,8 +128,9 @@ for domain in A C T E TE X nMT ; do
     "
 done
 
-
-
+# Build pHMM database
+cat 2refer/2hmm/3phmm/*/*.hmm > 2refer/all.hmm
+hmmpress 2refer/all.hmm
 
 ```
 
@@ -213,8 +214,13 @@ for i in $(cat search_threshold/strain_75_new.tsv); do
     python 0script/calc_ratio_outlier.py -i search_threshold/blast/${i} -o search_threshold/threshold_b/${i}
 done
 
-
-
+for i in $(cat search_threshold/strain_75_new.tsv); do
+    cat search_threshold/threshold_m/${i}.tsv.ratios.tsv | grep "${i}" >> search_threshold/threshold_m/${i}_tmp.tsv
+    for domain in A C T E TE X nMT; do
+        cat search_threshold/threshold_m/${i}_tmp.tsv | tsv-filter --str-eq 1:"${domain}" >> search_threshold/threshold_m/${domain}_ratio.tsv
+    done
+    rm search_threshold/threshold_m/${i}_tmp.tsv
+done
 
 
 # Handle miniprot results: remove outliers and merge identical matches
@@ -279,12 +285,11 @@ cat strains.all.tsv | parallel --colsep '\t' --no-run-if-empty --linebuffer -k -
 # find threshold for quality control ('0script/quality_control.py')(bitscore/domain_length)
 for i in $(cat search_threshold/strain_75_new.tsv); do
     python 0script/calc_ratio_qc.py -i search_threshold/blast/${i}.tsv -o search_threshold/threshold_qc/${i}
-done
-for i in $(cat search_threshold/strain_75_new.tsv); do
-    cat search_threshold/threshold_qc/${i}.ratios.tsv | grep "${i}" >> search_threshold/threshold_qc_2/${i}.ratios.tsv
-done
-for i in $(cat search_threshold/strain_75_new.tsv); do
-    cat search_threshold/threshold_qc_2/${i}.ratios.tsv | grep 'nMT.nMT' | awk -F'\t' '!seen[$2]++' >> search_threshold/threshold_qc_2/nMT.ratios.tsv
+    cat search_threshold/threshold_qc/${i}.tsv.ratios.tsv | grep "${i}" >> search_threshold/threshold_qc/${i}_tmp.tsv
+    for domain in A C T E TE X nMT; do
+        cat search_threshold/threshold_qc/${i}_tmp.tsv | tsv-filter --str-eq 1:"${domain}" >> search_threshold/threshold_qc/${domain}_ratio.tsv
+    done
+    rm search_threshold/threshold_qc/${i}_tmp.tsv
 done
 
 
@@ -297,7 +302,7 @@ cat strains.all.tsv | parallel --colsep '\t' --no-run-if-empty --linebuffer -k -
 
     echo "=> remove matches with low confidence."
     cat 3search/2blast/4filter/{1}.outliers.tsv |
-        tsv-filter --ge 9:70 --le 10:1.0e-20 --ge 11:50 |
+        tsv-filter --ge 9:65 --le 10:1.0e-20 --ge 11:50 |
         sort -k4,4 -k6,6n -k7,7n -k8,8nr |
         uniq > 3search/2blast/4filter/{1}.confidence.tsv
 
@@ -308,28 +313,207 @@ cat strains.all.tsv | parallel --colsep '\t' --no-run-if-empty --linebuffer -k -
     python 0script/combine_match.py -t 0.95 -i 3search/2blast/4filter/{1}.quality.tsv -o 3search/2blast/5site/{1}.tsv
 '
 
+```
+
+
+## Extract Matched Domains Sequences
+
+```shell
+cd ~/project/Actionmycetes/search
+
+# Merge search results of miniprot and blast
+mkdir -p 3search/3site/1raw
+cat strains.all.tsv | parallel --colsep '\t' --no-run-if-empty --linebuffer -k -j 8 '
+    cat 3search/1miniprot/5site/{1}.tsv 3search/2blast/5site/{1}.tsv |
+        awk -F"\t" "{ if (\$5 == 0) { \$5 = 1; } print \$0; }" OFS="\t" |
+        sort -k3,3 -k5,5n -k6,6n |
+        uniq > 3search/3site/1raw/{1}.tsv
+'
+
+# Merge site information and divide the cluster
+mkdir -p 3search/3site/2site 3search/3site/3cluster
+cat strains.all.tsv | parallel --colsep '\t' --no-run-if-empty --linebuffer -k -j 8 '
+    python 0script/recombine_site.py -t 0.95 -i 3search/3site/1raw/{1}.tsv -o 3search/3site/2site/{1}.tsv
+    python 0script/divide_cluster.py 3search/3site/2site/{1}.tsv 3search/3site/3cluster/{1}.tsv
+'
+
+# Extract site information（contig and location） of matched Domains
+mkdir -p 3search/4subseq/1region
+cat strains.all.tsv | parallel --colsep '\t' --no-run-if-empty --linebuffer -k -j 8 '
+    cat 3search/3site/3cluster/{1}.tsv |
+        grep -v ">" |
+        cut -f 7,9,10 |
+        perl -nla -e "
+            my (\$contig, \$start, \$end) = split /\t/;
+            print qq{\$contig:\$start-\$end};
+        " >3search/4subseq/1region/{1}.tsv
+'
+
+# Extract sequences of matched Domains
+cat strains.all.tsv | while IFS=$'\t' read -r strain genus id _; do
+    mkdir -p 3search/4subseq/2nucl/${strain}
+    gzip -dk ASSEMBLY/${genus}/${strain}/${id}_genomic.fna.gz
+    cat 3search/4subseq/1region/${strain}.tsv | parallel --colsep '\n' --no-run-if-empty --linebuffer -k -j 8 "
+        faops region -l 0 ASSEMBLY/${genus}/${strain}/${id}_genomic.fna <(echo {}) 3search/4subseq/2nucl/${strain}/{}.fa
+    "
+    rm -f ASSEMBLY/${genus}/${strain}/${id}_genomic.fna
+done
+
+# Six frame translation (dna->aa) 
+cat strains.all.tsv | while IFS=$'\t' read -r strain genus id _; do
+    mkdir -p 3search/4subseq/3pro/${strain}
+    cat 3search/4subseq/1region/${strain}.tsv | parallel --colsep '\n' --no-run-if-empty --linebuffer -k -j 8 "
+        perl 0script/six_frame_translation.pl 3search/4subseq/2nucl/${strain}/{}.fa 3search/4subseq/3pro/${strain}/{}.fa
+    "
+done
+
+```
+
+## Determination of Domain Types
+
+```shell
+cd ~/project/Actionmycetes/search
+
+# hmmscan based on pHMMs
+cat strains.all.tsv | while IFS=$'\t' read -r strain genus id _; do
+    mkdir -p 3search/5hmmscan/1scan/${strain}
+    cat 3search/4subseq/1region/${strain}.tsv | parallel --colsep '\n' --no-run-if-empty --linebuffer -k -j 2 "
+            hmmscan --cpu 4 --tblout 3search/5hmmscan/1scan/${strain}/{}.txt 2refer/all.hmm 3search/4subseq/3pro/${strain}/{}.fa
+        "
+done
+
+# Extract hmmscan results
+cat strains.all.tsv | while IFS=$'\t' read -r strain genus id _; do
+    mkdir -p 3search/5hmmscan/2result/${strain}
+    cat 3search/4subseq/1region/${strain}.tsv | parallel --colsep '\n' --no-run-if-empty --linebuffer -k -j 8 "
+            python 0script/extract_hmm.py 3search/5hmmscan/1scan/${strain}/{}.txt 3search/5hmmscan/2result/${strain}/{}.tsv
+        "
+done
+
+# Merge different results reflecting the same site
+cat strains.all.tsv | while IFS=$'\t' read -r strain genus id _; do
+    mkdir -p 3search/5hmmscan/3merge/${strain}
+    cat 3search/4subseq/1region/${strain}.tsv | parallel --colsep '\n' --no-run-if-empty --linebuffer -k -j 8 "
+        if [ -s 3search/5hmmscan/2result/${strain}/{}.tsv ]; then
+            python 0script/merge_lines.py -i 3search/5hmmscan/2result/${strain}/{}.tsv -o 3search/5hmmscan/3merge/${strain}/{}.tsv
+        fi
+    "
+done 
+
+# Merge hmmscan results
+mkdir -p 3search/5hmmscan/4combine
+cat strains.all.tsv | parallel --colsep '\t' --no-run-if-empty --linebuffer -k -j 4 '
+    if [ "$(ls -A 3search/5hmmscan/3merge/{1}/ 2>/dev/null)" ]; then
+        cat 3search/5hmmscan/3merge/{1}/*.tsv > 3search/5hmmscan/4combine/{1}.tsv
+    else
+        touch 3search/5hmmscan/4combine/{1}.tsv
+    fi
+'
+
+# Merge search and hmmscan results
+mkdir -p 3search/6all
+cat strains.all.tsv | parallel --colsep '\t' --no-run-if-empty --linebuffer -k -j 8 '
+    python 0script/combine_result.py -s 3search/3site/3cluster/{1}.tsv -m 3search/5hmmscan/4combine/{1}.tsv -o 3search/6all/{1}.tsv
+'
+
+```
+
+
+
+```shell
+# find threshold for 'extract_hmm.py'
+cd project/Actionmycetes/search/
+
+
+faops split-name -l 0 2refer/fixed_represent_domain.all.fa 2refer/represent_domain
+cat 2refer/fixed_represent_domain.all.fa | grep ">" | sed 's/>//g' > hmm_threshold/fasta.lst
+cp 2refer/represent_domain hmm_threshold/
+
+cat hmm_threshold/fasta.lst | parallel --colsep '\n' --no-run-if-empty --linebuffer -k -j 4 "
+    hmmscan --cpu 4 --tblout hmm_threshold/result/{}.txt 2refer/all.hmm hmm_threshold/represent_domain/{}.fa
+"
+
+for i in $(cat hmm_threshold/fasta.lst); do
+    cat hmm_threshold/result/${i}.txt | 
+        perl -nla -e '
+            /#/ and next;
+            my @p = split /\./, $F[2];
+            print if $F[0] eq join(".", @p[0..2]);
+        ' \
+    >> hmm_threshold/result.tsv
+done
 
 ```
 
 ```shell
-# 
-
-cd ~/project/Actionmycetes/search
-find 3search/2blast/5site -name "*.tsv" -type f -size +0c | sed -E 's!3search/2blast/5site/!!g; s!.tsv!!g' >> 3search/2blast/site.tsv
-find 3search/1miniprot/5site -name "*.tsv" -type f -size +0c | sed -E 's!3search/1miniprot/5site/!!g; s!.tsv!!g' >> 3search/1miniprot/site.tsv
-
-grep -vxFf 3search/2blast/site.tsv  3search/1miniprot/site.tsv > 3search/miniprot_blast_site_diff.tsv
-shuf -n 100 3search/miniprot_blast_site_diff.tsv > 3search/antismash_test.tsv
-tsv-join --filter-file strains.all.tsv --key-fields 1 --append-fields 2,3 3search/antismash_test.tsv > 3search/antismash.tsv
-
-source ~/miniconda3/bin/activate
-conda activate antismash
-
-cat 3search/antismash.tsv |
-parallel --colsep '\t' --no-run-if-empty --linebuffer -k -j 1 "
-    echo {1};
-    antismash --taxon bacteria -c 4 --cb-general --cc-mibig --cb-knownclusters --pfam2go --asf --genefinding-tool prodigal ASSEMBLY/{2}/{1}/{3}_genomic.fna.gz --output-dir 3search/antismash/{1}
-    "
+# find threshold for 'divide_cluster.py'
+cat ok_domain_aa_75.txt | grep -A 1 -E "Condensation|Cglyc|AMP-binding|-PCP|nMT|-X-|Epimerization|Thioesterase" | sed '/^--$/d' \
+    >> domain_75.txt
 
 
+    awk '
+    NR==FNR {
+        map[$4] = $1"."$2"."$3"."
+        next
+    }
+    /^>/ {
+        name = substr($0, 2)
+        if (name in map) {
+            print ">" map[name] name
+        } else {
+            print "NOT FOUND: " name > "/dev/stderr"
+            print $0
+        }
+        next
+    }
+    {print}
+    ' format.tsv domain_75.txt > fixed_domain_75.fa
+
+awk '
+BEGIN{
+    while((getline < "remove.lst")>0) del[$1]=1
+}
+/^>/{
+    name=substr($0,2)
+    keep = !(name in del)
+}
+keep
+' fixed_domain_75.fa > domain_75.fa
+
+cat domain_75.fa | grep '>' | sed 's/>//g' > domain_all.tsv
+
+awk '{
+    split($0, a, ".")
+    domain = a[1]
+
+    split($0, b, "-")
+    n = length(b)
+    start = b[n-3]
+    end   = b[n-2]
+
+    print $0 "\t" domain "\t" start "\t" end
+}' domain_all.tsv > distance.tsv
+
+cd antismash/antismash_summary/product/antismash_all
+
+
+python ../../gene_location_from_gbk.py ../../aa1/nrps_dna/nrps_dna_identifier.tsv gene_location.tsv
+
+
+        cat ../knownGPA_mibig_list.txt | grep -v '^$' |
+        while IFS=$'\t' read -r strain cluster _ _ _ _; do
+            region=$(echo ${cluster} | sed -E 's/c[0-9]+//g' | sed -E 's/r//g')
+            clu=$(echo ${cluster} | sed -E 's/r[0-9]+//g' | sed -E 's/c//g')
+			json_path=$(ls ${strain}/*.json 2>/dev/null | head -n 1)
+            cds=$(python ../../antismash_json_nrps_identifier.py ${json_path} ${region} ${clu})
+            identifier=$(echo $cds | sed -E "s/\[//g "| sed "s/\]//g" | sed "s/'//g"  | sed 's/, /\n/g')
+            echo ${identifier} | sed "s#^#${strain}\tr${region}c${clu}\t#g" \
+            >> nrps_dna_identifier.tsv
+        done
+
+python ../../gene_location_from_gbk.py nrps_dna_identifier.tsv gene_location.tsv
 ```
+
+
+
+
